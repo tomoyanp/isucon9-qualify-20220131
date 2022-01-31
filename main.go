@@ -527,6 +527,11 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res)
 }
 
+// TODO カラムもうちょい絞る
+func selectItemAndUserStatement() string {
+	return "SELECT item.id, item.seller_id, item.buyer_id, item.status, item.name, item.price, item.description, item.image_name, item.category_id, item.created_at, item.updated_at, user.id, user.account_name, user.hashed_password, user.address, user.num_sell_items, user.last_bump, user_created_at"
+}
+
 func getNewItems(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	itemIDStr := query.Get("item_id")
@@ -555,7 +560,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		// paging
 		err := dbx.Select(&itemAndUsers,
 			// "SELECT * FROM `items` WHERE `status` IN (?,?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
-			"SELECT * FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+"FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			time.Unix(createdAt, 0),
@@ -571,7 +576,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&itemAndUsers,
-			"SELECT * FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+" FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			ItemsPerPage+1,
@@ -682,7 +687,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		// paging
 		// TODO遅そう
 		inQuery, inArgs, err = sqlx.In(
-			"SELECT * FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND items.category_id IN (?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+"FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND items.category_id IN (?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			categoryIDs,
@@ -699,7 +704,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		inQuery, inArgs, err = sqlx.In(
-			"SELECT * FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND items.category_id IN (?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+" FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND items.category_id IN (?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			categoryIDs,
@@ -917,7 +922,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		// paging
 		// TODO遅そう。IN句いる？
 		err := tx.Select(&items,
-			"SELECT * FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE (items.seller_id = ? OR items.buyer_id = ?) AND items.status IN (?,?,?,?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+" FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE (items.seller_id = ? OR items.buyer_id = ?) AND items.status IN (?,?,?,?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			user.ID,
 			user.ID,
 			ItemStatusOnSale,
@@ -939,7 +944,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := tx.Select(&items,
-			"SELECT * FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE (items.seller_id = ? OR items.buyer_id = ?) AND items.status IN (?,?,?,?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+" FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE (items.seller_id = ? OR items.buyer_id = ?) AND items.status IN (?,?,?,?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			user.ID,
 			user.ID,
 			ItemStatusOnSale,
