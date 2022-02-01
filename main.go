@@ -432,19 +432,19 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 
 var categoryMap = map[int]Category{}
 
-func createCategoryMap(q sqlx.Queryer) {
+func createCategoryMap() {
 	categories := []Category{}
-	sqlx.Select(q, &categories, "SELECT * FROM categories")
+	dbx.Select(&categories, "SELECT * FROM categories")
 	for _, category := range categories {
-		category, _ = recursiveCategory(q, category.ID)
+		category, _ = recursiveCategory(category.ID)
 		categoryMap[category.ID] = category
 	}
 }
 
-func recursiveCategory(q sqlx.Queryer, id int) (category Category, err error) {
-	sqlx.Select(q, &category, "SELECT * FROM cateogries WHERE id = ?", id)
+func recursiveCategory(id int) (category Category, err error) {
+	dbx.Select(&category, "SELECT * FROM cateogries WHERE id = ?", id)
 	if category.ParentID != 0 {
-		parentCategory, err := recursiveCategory(q, category.ParentID)
+		parentCategory, err := recursiveCategory(category.ParentID)
 		if err != nil {
 			return category, err
 		}
@@ -538,7 +538,7 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		Language: "Go",
 	}
 
-	createCategoryMap(dbx)
+	createCategoryMap()
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(res)
