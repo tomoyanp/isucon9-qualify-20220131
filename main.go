@@ -101,24 +101,24 @@ type Item struct {
 }
 
 type ItemAndUser struct {
-	ItemID             int64     `json:"id" db:"item.id"`
-	ItemSellerID       int64     `json:"seller_id" db:"item.seller_id"`
-	ItemBuyerID        int64     `json:"buyer_id" db:"item.buyer_id"`
-	ItemStatus         string    `json:"status" db:"item.status"`
-	ItemName           string    `json:"name" db:"item.name"`
-	ItemPrice          int       `json:"price" db:"item.price"`
-	ItemDescription    string    `json:"description" db:"item.description"`
-	ItemImageName      string    `json:"image_name" db:"item.image_name"`
-	ItemCategoryID     int       `json:"category_id" db:"item.category_id"`
-	ItemCreatedAt      time.Time `json:"-" db:"item.created_at"`
-	ItemUpdatedAt      time.Time `json:"-" db:"item.updated_at"`
-	UserID             int64     `json:"id" db:"user.id"`
-	UserAccountName    string    `json:"account_name" db:"user.account_name"`
-	UserHashedPassword []byte    `json:"-" db:"user.hashed_password"`
-	UserAddress        string    `json:"address,omitempty" db:"user.address"`
-	UserNumSellItems   int       `json:"num_sell_items" db:"user.num_sell_items"`
-	UserLastBump       time.Time `json:"-" db:"user.last_bump"`
-	UserCreatedAt      time.Time `json:"-" db:"user.created_at"`
+	ItemID             int64     `json:"id" db:"items_id"`
+	ItemSellerID       int64     `json:"seller_id" db:"items_seller_id"`
+	ItemBuyerID        int64     `json:"buyer_id" db:"items_buyer_id"`
+	ItemStatus         string    `json:"status" db:"items_status"`
+	ItemName           string    `json:"name" db:"items_name"`
+	ItemPrice          int       `json:"price" db:"items_price"`
+	ItemDescription    string    `json:"description" db:"items_description"`
+	ItemImageName      string    `json:"image_name" db:"items_image_name"`
+	ItemCategoryID     int       `json:"category_id" db:"items_category_id"`
+	ItemCreatedAt      time.Time `json:"-" db:"items_created_at"`
+	ItemUpdatedAt      time.Time `json:"-" db:"items_updated_at"`
+	UserID             int64     `json:"id" db:"users_id"`
+	UserAccountName    string    `json:"account_name" db:"users_account_name"`
+	UserHashedPassword []byte    `json:"-" db:"users_hashed_password"`
+	UserAddress        string    `json:"address,omitempty" db:"users_address"`
+	UserNumSellItems   int       `json:"num_sell_items" db:"users_num_sell_items"`
+	UserLastBump       time.Time `json:"-" db:"users_last_bump"`
+	UserCreatedAt      time.Time `json:"-" db:"users_created_at"`
 }
 
 type ItemSimple struct {
@@ -529,7 +529,25 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 
 // TODO カラムもうちょい絞る
 func selectItemAndUserStatement() string {
-	return "SELECT item.id, item.seller_id, item.buyer_id, item.status, item.name, item.price, item.description, item.image_name, item.category_id, item.created_at, item.updated_at, user.id, user.account_name, user.hashed_password, user.address, user.num_sell_items, user.last_bump, user_created_at"
+	return `SELECT
+	items.id as items_id,
+	items.seller_id as items_seller_id,
+	items.buyer_id as items_buyer_id,
+	items.status as items_status,
+	items.name as items_name,
+	items.price as items_price,
+	items.description as items_description,
+	items.image_name as items_image_name,
+	items.category_id as items_category_id,
+	items.created_at as items_created_at,
+	items.updated_at as items_updated_at,
+	users.id as users_id,
+	users.account_name as users_account_name,
+	users.hashed_password as users_hashed_password,
+	users.address as users_address,
+	users.num_sell_items as users_num_sell_items,
+	users.last_bump as users_last_bump,
+	users.created_at as users_created_at`
 }
 
 func getNewItems(w http.ResponseWriter, r *http.Request) {
@@ -558,9 +576,10 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	itemAndUsers := []ItemAndUser{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
+		baseQuery := selectItemAndUserStatement() + " FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?";
 		err := dbx.Select(&itemAndUsers,
 			// "SELECT * FROM `items` WHERE `status` IN (?,?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
-			selectItemAndUserStatement()+"FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			baseQuery,
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			time.Unix(createdAt, 0),
@@ -576,7 +595,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&itemAndUsers,
-			selectItemAndUserStatement()+" FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement() + " FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			ItemsPerPage+1,
@@ -687,7 +706,7 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		// paging
 		// TODO遅そう
 		inQuery, inArgs, err = sqlx.In(
-			selectItemAndUserStatement()+"FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND items.category_id IN (?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+" FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND items.category_id IN (?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			categoryIDs,
