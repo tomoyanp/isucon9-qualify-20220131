@@ -430,17 +430,32 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 	return userSimple, err
 }
 
-// TODO再帰処理している
-func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
-	err = sqlx.Get(q, &category, "SELECT * FROM `categories` WHERE `id` = ?", categoryID)
+var categoryMap = map[int]Category{}
+
+func createCategoryMap(q sqlx.Queryer) {
+	categories := []Category{}
+	sqlx.Select(q, &categories, "SELECT * FROM categories")
+	for _, category := range categories {
+		category, _ = recursiveCategory(q, category.ID)
+		categoryMap[category.ID] = category
+	}
+}
+
+func recursiveCategory(q sqlx.Queryer, id int) (category Category, err error) {
+	sqlx.Select(q, &category, "SELECT * FROM cateogries WHERE id = ?", id)
 	if category.ParentID != 0 {
-		parentCategory, err := getCategoryByID(q, category.ParentID)
+		parentCategory, err := recursiveCategory(q, category.ParentID)
 		if err != nil {
 			return category, err
 		}
 		category.ParentCategoryName = parentCategory.CategoryName
 	}
+
 	return category, err
+}
+
+func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
+	return categoryMap[categoryID], err
 }
 
 // TODOキャッシュできそう
@@ -523,6 +538,8 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		Language: "Go",
 	}
 
+	createCategoryMap(dbx)
+
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(res)
 }
@@ -576,7 +593,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	itemAndUsers := []ItemAndUser{}
 	if itemID > 0 && createdAt > 0 {
 		// paging
-		baseQuery := selectItemAndUserStatement() + " FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?";
+		baseQuery := selectItemAndUserStatement() + " FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) AND (items.created_at < ?  OR (items.created_at <= ? AND items.id < ?)) ORDER BY items.created_at DESC, items.id DESC LIMIT ?"
 		err := dbx.Select(&itemAndUsers,
 			// "SELECT * FROM `items` WHERE `status` IN (?,?) AND (`created_at` < ?  OR (`created_at` <= ? AND `id` < ?)) ORDER BY `created_at` DESC, `id` DESC LIMIT ?",
 			baseQuery,
@@ -595,7 +612,7 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// 1st page
 		err := dbx.Select(&itemAndUsers,
-			selectItemAndUserStatement() + " FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
+			selectItemAndUserStatement()+" FROM `items` LEFT JOIN users ON items.seller_id = users.id WHERE items.status IN (?,?) ORDER BY items.created_at DESC, items.id DESC LIMIT ?",
 			ItemStatusOnSale,
 			ItemStatusSoldOut,
 			ItemsPerPage+1,
