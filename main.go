@@ -436,23 +436,22 @@ func createCategoryMap() {
 	categories := []Category{}
 	dbx.Select(&categories, "SELECT * FROM categories")
 	for _, category := range categories {
-		category, _ = recursiveCategory(category.ID)
+		category, _ = recursiveCategory(dbx, category.ID)
 		categoryMap[category.ID] = category
 	}
 }
 
-func recursiveCategory(id int) (Category, error) {
-	category := Category{}
-	dbx.Select(&category, "SELECT * FROM cateogries WHERE id = ?", id)
+func recursiveCategory(q sqlx.Queryer, id int) (category Category, err error) {
+	err = dbx.Get(&category, "SELECT * FROM categories WHERE id = ?", id)
 	if category.ParentID != 0 {
-		parentCategory, err := recursiveCategory(category.ParentID)
+		parentCategory, err := recursiveCategory(q, category.ParentID)
 		if err != nil {
 			return category, err
 		}
 		category.ParentCategoryName = parentCategory.CategoryName
 	}
 
-	return category, nil
+	return category, err
 }
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
