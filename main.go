@@ -458,18 +458,35 @@ func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err err
 	return categoryMap[categoryID], err
 }
 
-// TODOキャッシュできそう
-func getConfigByName(name string) (string, error) {
-	config := Config{}
-	err := dbx.Get(&config, "SELECT * FROM `configs` WHERE `name` = ?", name)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
+var configMap = map[string]string{}
+
+func createConfigMap() {
+	configs := []Config{}
+	err := dbx.Select(&configs, "SELECT * FROM configs")
+
 	if err != nil {
 		log.Print(err)
-		return "", err
+		return
 	}
-	return config.Val, err
+
+	for _, config := range configs {
+		configMap[config.Name] = config.Val
+	}
+}
+
+// TODOキャッシュできそう
+func getConfigByName(name string) (string, error) {
+	return configMap[name], nil
+	// config := Config{}
+	// err := dbx.Get(&config, "SELECT * FROM `configs` WHERE `name` = ?", name)
+	// if err == sql.ErrNoRows {
+	// 	return "", nil
+	// }
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return "", err
+	// }
+	// return config.Val, err
 }
 
 func getPaymentServiceURL() string {
