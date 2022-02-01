@@ -441,7 +441,8 @@ func createCategoryMap() {
 	}
 }
 
-func recursiveCategory(id int) (category Category, err error) {
+func recursiveCategory(id int) (Category, error) {
+	category := Category{}
 	dbx.Select(&category, "SELECT * FROM cateogries WHERE id = ?", id)
 	if category.ParentID != 0 {
 		parentCategory, err := recursiveCategory(category.ParentID)
@@ -451,7 +452,7 @@ func recursiveCategory(id int) (category Category, err error) {
 		category.ParentCategoryName = parentCategory.CategoryName
 	}
 
-	return category, err
+	return category, nil
 }
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
