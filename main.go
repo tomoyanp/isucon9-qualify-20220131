@@ -555,7 +555,9 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		Language: "Go",
 	}
 
+	// TODO 複数台構成にした際考慮必要
 	createCategoryMap()
+	createConfigMap()
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(res)
