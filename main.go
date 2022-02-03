@@ -156,8 +156,8 @@ type ItemDetail struct {
 type TransactionEvidenceAndShipping struct {
 	ID                    int64  `json:"id" db:"t_id"`
 	ItemID                int64  `json:"id" db:"t_item_id"`
-	TransactionEvidenceId int64  `json:"transactionEvidenceId" db:"t_transaction_evidence_id"`
 	Status                string `json:"status" db:"t_status"`
+	TransactionEvidenceId int64  `json:"transactionEvidenceId" db:"s_transaction_evidence_id"`
 	ReserveID             string `json:"reserve_id" db:"s_reserve_id"`
 }
 
@@ -1037,8 +1037,11 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		itemIdList = append(itemIdList, int(item.ItemID))
 	}
 
-	usersSql := "SELECT * FROM users where id IN (?)"
-	txSql := `select
+	usersSql, usersArgs, err := sqlx.In("SELECT * FROM users where id IN (?)", buyerIdList)
+	if err != nil {
+		log.Print(err)
+	}
+	txSql, txArgs, err := sqlx.In(`select
 		transaction_evidences.id as t_id,
 		transaction_evidences.status as t_status,
 		transaction_evidences.item_id as t_item_id,
@@ -1046,18 +1049,32 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		shippings.reserve_id as s_reserve_id
 		from transaction_evidences LEFT JOIN shippings
 		ON transaction_evidences.id = shippings.transaction_evidence_id
-		where transaction_evidences.item_id IN (?)`
+		where transaction_evidences.item_id IN (?);`, itemIdList)
+
+	if err != nil {
+		log.Print(err)
+	}
 
 	transactionEvidenceAndShipping := []TransactionEvidenceAndShipping{}
 	users := []User{}
 
-	err = tx.Get(&users, usersSql, buyerIdList)
-	err = tx.Get(&transactionEvidenceAndShipping, txSql, itemIdList)
+	err = tx.Select(&users, usersSql, usersArgs...)
+
+	if err != nil {
+		log.Print(err)
+	}
+
+	err = tx.Select(&transactionEvidenceAndShipping, txSql, txArgs...)
+
+	if err != nil {
+		log.Print(err)
+	}
 
 	// TODON+1
 	for _, item := range items {
 		category, err := getCategoryByID(tx, item.ItemCategoryID)
 		if err != nil {
+			log.Print(err)
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			tx.Rollback()
 			return
@@ -1105,6 +1122,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if !flag {
+				log.Print("user not matched")
 				outputErrorMsg(w, http.StatusNotFound, "buyer not found")
 				tx.Rollback()
 				return
@@ -1125,23 +1143,10 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
-		if !flag {
-			// It's able to ignore ErrNoRows
-			log.Print(err)
-			outputErrorMsg(w, http.StatusInternalServerError, "db error")
-			tx.Rollback()
-			return
-		}
 
-		if txShipping.ID > 0 {
+		if flag && txShipping.ID > 0 {
 			if txShipping.TransactionEvidenceId == 0 {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
-				tx.Rollback()
-				return
-			}
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "db error")
 				tx.Rollback()
 				return
 			}
