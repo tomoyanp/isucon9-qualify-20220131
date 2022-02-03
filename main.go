@@ -153,6 +153,14 @@ type ItemDetail struct {
 	CreatedAt                 int64       `json:"created_at"`
 }
 
+type TransactionEvidenceAndShipping struct {
+	ID                    int64  `json:"id" db:"t_id"`
+	ItemID                int64  `json:"id" db:"t_item_id"`
+	TransactionEvidenceId int64  `json:"transactionEvidenceId" db:"t_transaction_evidence_id"`
+	Status                string `json:"status" db:"t_status"`
+	ReserveID             string `json:"reserve_id" db:"s_reserve_id"`
+}
+
 type TransactionEvidence struct {
 	ID                 int64     `json:"id" db:"id"`
 	SellerID           int64     `json:"seller_id" db:"seller_id"`
@@ -1018,14 +1026,36 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemDetails := []ItemDetail{}
+
+	buyerIdList := []int{}
+	itemIdList := []int{}
+
+	for _, item := range items {
+		if item.ItemBuyerID != 0 {
+			buyerIdList = append(buyerIdList, int(item.ItemBuyerID))
+		}
+		itemIdList = append(itemIdList, int(item.ItemID))
+	}
+
+	usersSql := "SELECT * FROM users where id IN (?)"
+	txSql := `select
+		transaction_evidences.id as t_id,
+		transaction_evidences.status as t_status,
+		transaction_evidences.item_id as t_item_id,
+		shippings.transaction_evidence_id as s_transaction_evidence_id,
+		shippings.reserve_id as s_reserve_id
+		from transaction_evidences LEFT JOIN shippings
+		ON transaction_evidences.id = shippings.transaction_evidence_id
+		where transaction_evidences.item_id IN (?)`
+
+	transactionEvidenceAndShipping := []TransactionEvidenceAndShipping{}
+	users := []User{}
+
+	err = tx.Get(&users, usersSql, buyerIdList)
+	err = tx.Get(&transactionEvidenceAndShipping, txSql, itemIdList)
+
 	// TODON+1
 	for _, item := range items {
-		// seller, err := getUserSimpleByID(tx, item.SellerID)
-		// if err != nil {
-		// 	outputErrorMsg(w, http.StatusNotFound, "seller not found")
-		// 	tx.Rollback()
-		// 	return
-		// }
 		category, err := getCategoryByID(tx, item.ItemCategoryID)
 		if err != nil {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
@@ -1061,8 +1091,20 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		// TODO なんとかしたい
 		// 非同期にできそう
 		if item.ItemBuyerID != 0 {
-			buyer, err := getUserSimpleByID(tx, item.ItemBuyerID)
-			if err != nil {
+			// buyer, err := getUserSimpleByID(tx, item.ItemBuyerID)
+			flag := false
+			buyer := UserSimple{}
+			for _, user := range users {
+				if user.ID == item.ItemBuyerID {
+					buyer.AccountName = user.AccountName
+					buyer.ID = user.ID
+					buyer.NumSellItems = user.NumSellItems
+					flag = true
+					break
+				}
+			}
+
+			if !flag {
 				outputErrorMsg(w, http.StatusNotFound, "buyer not found")
 				tx.Rollback()
 				return
@@ -1071,9 +1113,19 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			itemDetail.Buyer = &buyer
 		}
 
-		transactionEvidence := TransactionEvidence{}
-		err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ItemID)
-		if err != nil && err != sql.ErrNoRows {
+		// transactionEvidence := TransactionEvidence{}
+		// err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ItemID)
+
+		txShipping := TransactionEvidenceAndShipping{}
+		flag := false
+		for _, row := range transactionEvidenceAndShipping {
+			if item.ItemID == row.ItemID {
+				txShipping = row
+				flag = true
+				break
+			}
+		}
+		if !flag {
 			// It's able to ignore ErrNoRows
 			log.Print(err)
 			outputErrorMsg(w, http.StatusInternalServerError, "db error")
@@ -1081,10 +1133,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if transactionEvidence.ID > 0 {
-			shipping := Shipping{}
-			err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
-			if err == sql.ErrNoRows {
+		if txShipping.ID > 0 {
+			if txShipping.TransactionEvidenceId == 0 {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
 				tx.Rollback()
 				return
@@ -1096,7 +1146,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
-				ReserveID: shipping.ReserveID,
+				ReserveID: txShipping.ReserveID,
 			})
 			if err != nil {
 				log.Print(err)
@@ -1105,8 +1155,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			itemDetail.TransactionEvidenceID = transactionEvidence.ID
-			itemDetail.TransactionEvidenceStatus = transactionEvidence.Status
+			itemDetail.TransactionEvidenceID = txShipping.ID
+			itemDetail.TransactionEvidenceStatus = txShipping.Status
 			itemDetail.ShippingStatus = ssr.Status
 		}
 
