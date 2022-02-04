@@ -343,6 +343,7 @@ func init() {
 // )
 
 func main() {
+	log.Print("start main")
 	// redisPoolCreate()
 
 	host := "172.31.21.159"
