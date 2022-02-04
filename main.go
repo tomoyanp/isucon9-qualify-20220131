@@ -310,7 +310,7 @@ func init() {
 }
 
 func redisPoolCreate() {
-	host := "172.31.21.159"
+	host := "172.31.21.159:6379"
 	dbNo := 1
 	opt := redis.DialDatabase(dbNo)
 
