@@ -1183,7 +1183,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		// err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ItemID)
 
 		txShipping := TransactionEvidenceAndShipping{}
-		flag := false
+		flag = false
 		for _, row := range transactionEvidenceAndShipping {
 			if item.ItemID == row.ItemID {
 				txShipping = row
