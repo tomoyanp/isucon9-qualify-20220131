@@ -1192,7 +1192,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			buyer.AccountName = u.AccountName
 			buyer.ID = u.ID
 			buyer.NumSellItems = u.NumSellItems
-			flag = true
 			itemDetail.BuyerID = item.ItemBuyerID
 			itemDetail.Buyer = &buyer
 		}
@@ -1201,26 +1200,28 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		// err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ItemID)
 
 		txShipping, ok := txEvidenceMap[item.ItemID]
-
 		if ok && txShipping.ID > 0 {
 			if txShipping.TransactionEvidenceId == 0 {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
 				tx.Rollback()
 				return
 			}
-			ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
-				ReserveID: txShipping.ReserveID,
-			})
-			if err != nil {
-				log.Print(err)
-				outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
-				tx.Rollback()
-				return
-			}
+
+			shipping := Shipping{}
+			tx.Select(&shipping, "select status from shippings where reserve_id = ?", txShipping.ReserveID)
+			// ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
+			// 	ReserveID: txShipping.ReserveID,
+			// })
+			// if err != nil {
+			// 	log.Print(err)
+			// 	outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
+			// 	tx.Rollback()
+			// 	return
+			// }
 
 			itemDetail.TransactionEvidenceID = txShipping.ID
 			itemDetail.TransactionEvidenceStatus = txShipping.Status
-			itemDetail.ShippingStatus = txShipping.SStatus
+			itemDetail.ShippingStatus = shipping.Status
 		}
 
 		itemDetails = append(itemDetails, itemDetail)
