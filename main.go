@@ -159,6 +159,7 @@ type TransactionEvidenceAndShipping struct {
 	ID                    int64  `json:"id" db:"t_id"`
 	ItemID                int64  `json:"id" db:"t_item_id"`
 	Status                string `json:"status" db:"t_status"`
+	SStatus               string `json:"status" db:"s_status"`
 	TransactionEvidenceId int64  `json:"transactionEvidenceId" db:"s_transaction_evidence_id"`
 	ReserveID             string `json:"reserve_id" db:"s_reserve_id"`
 }
@@ -1103,6 +1104,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		transaction_evidences.item_id as t_item_id,
 		shippings.transaction_evidence_id as s_transaction_evidence_id,
 		shippings.reserve_id as s_reserve_id
+		shippings.status as s_status
 		from transaction_evidences LEFT JOIN shippings
 		ON transaction_evidences.id = shippings.transaction_evidence_id
 		where transaction_evidences.item_id IN (?);`, itemIdList)
@@ -1111,7 +1113,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 	}
 
-	transactionEvidenceAndShipping := []TransactionEvidenceAndShipping{}
+	transactionEvidences := []TransactionEvidenceAndShipping{}
 	users := []User{}
 
 	err = tx.Select(&users, usersSql, usersArgs...)
@@ -1120,10 +1122,22 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 	}
 
+	usersMap := map[int64]User{}
+
+	for _, u := range users {
+		usersMap[u.ID] = u
+	}
+
 	err = tx.Select(&transactionEvidenceAndShipping, txSql, txArgs...)
 
 	if err != nil {
 		log.Print(err)
+	}
+
+	txEvidenceMap := map[int64]TransactionEvidenceAndShipping{}
+
+	for _, tx := range transactionEvidences {
+		txEvidenceMap[tx.ItemID] = tx
 	}
 
 	// TODON+1
@@ -1165,24 +1179,20 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		// 非同期にできそう
 		if item.ItemBuyerID != 0 {
 			// buyer, err := getUserSimpleByID(tx, item.ItemBuyerID)
-			flag := false
-			buyer := UserSimple{}
-			for _, user := range users {
-				if user.ID == item.ItemBuyerID {
-					buyer.AccountName = user.AccountName
-					buyer.ID = user.ID
-					buyer.NumSellItems = user.NumSellItems
-					flag = true
-					break
-				}
-			}
+			u, ok := usersMap[item.ItemBuyerID]
 
-			if !flag {
+			if !ok {
 				log.Print("user not matched")
 				outputErrorMsg(w, http.StatusNotFound, "buyer not found")
 				tx.Rollback()
 				return
 			}
+
+			buyer := UserSimple{}
+			buyer.AccountName = u.AccountName
+			buyer.ID = u.ID
+			buyer.NumSellItems = u.NumSellItems
+			flag = true
 			itemDetail.BuyerID = item.ItemBuyerID
 			itemDetail.Buyer = &buyer
 		}
@@ -1190,17 +1200,9 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		// transactionEvidence := TransactionEvidence{}
 		// err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ItemID)
 
-		txShipping := TransactionEvidenceAndShipping{}
-		flag = false
-		for _, row := range transactionEvidenceAndShipping {
-			if item.ItemID == row.ItemID {
-				txShipping = row
-				flag = true
-				break
-			}
-		}
+		txShipping, ok := txEvidenceMap[item.ItemID]
 
-		if flag && txShipping.ID > 0 {
+		if ok && txShipping.ID > 0 {
 			if txShipping.TransactionEvidenceId == 0 {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
 				tx.Rollback()
@@ -1218,7 +1220,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 			itemDetail.TransactionEvidenceID = txShipping.ID
 			itemDetail.TransactionEvidenceStatus = txShipping.Status
-			itemDetail.ShippingStatus = ssr.Status
+			itemDetail.ShippingStatus = txShipping.SStatus
 		}
 
 		itemDetails = append(itemDetails, itemDetail)
