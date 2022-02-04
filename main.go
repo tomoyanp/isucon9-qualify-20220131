@@ -500,6 +500,7 @@ func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, flag bo
 	defer con.Close()
 
 	data, _ := redis.Bytes(con.Do("GET", categoryID))
+	log.Print(data)
 	deserialized := Category{}
 	flag = false
 
