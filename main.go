@@ -479,7 +479,6 @@ func createCategoryMap() {
 		ct, _ := recursiveCategory(dbx, category.ID)
 		serialized, err := json.Marshal(ct)
 		if err != nil {
-			log.Print("errrrrrr")
 			log.Print(err)
 		}
 		_, err = con.Do("SET", category.ID, serialized)
@@ -507,7 +506,6 @@ func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, flag bo
 	defer con.Close()
 
 	data, _ := redis.Bytes(con.Do("GET", categoryID))
-	log.Print(data)
 	deserialized := Category{}
 	flag = false
 
