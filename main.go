@@ -322,6 +322,7 @@ func redisPoolCreate() {
 			c, err := redis.Dial("tcp", host, opt)
 
 			if err != nil {
+				log.Print(err)
 				return nil, err
 			}
 
@@ -329,6 +330,9 @@ func redisPoolCreate() {
 		},
 		TestOnBorrow: func(c redis.Conn, t time.Time) error {
 			_, err := c.Do("PING")
+			if err != nil {
+				log.Print(err)
+			}
 			return err
 		},
 	}
@@ -505,7 +509,11 @@ func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, flag bo
 	con := pool.Get()
 	defer con.Close()
 
-	data, _ := redis.Bytes(con.Do("GET", categoryID))
+	data, err := redis.Bytes(con.Do("GET", categoryID))
+	if err != nil {
+		log.Print(err)
+	}
+
 	deserialized := Category{}
 	flag = false
 
