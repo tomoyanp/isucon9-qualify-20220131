@@ -482,7 +482,7 @@ func createCategoryMap() {
 			log.Print("errrrrrr")
 			log.Print(err)
 		}
-		err = con.Do("SET", category.ID, serialized)
+		err, _ = con.Do("SET", category.ID, serialized)
 		if err != nil {
 			log.Print(err)
 		}
