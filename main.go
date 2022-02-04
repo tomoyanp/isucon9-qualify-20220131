@@ -1204,7 +1204,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			}
 
 			shipping := Shipping{}
-			err := tx.Select(&shipping, "select status from shippings where reserve_id = ?", txShipping.ReserveID)
+			err := tx.Get(&shipping, "select status from shippings where reserve_id = ?", txShipping.ReserveID)
 			if err != nil {
 				log.Print("error")
 				log.Print(err)
