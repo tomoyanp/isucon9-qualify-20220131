@@ -159,7 +159,6 @@ type TransactionEvidenceAndShipping struct {
 	ID                    int64  `json:"id" db:"t_id"`
 	ItemID                int64  `json:"id" db:"t_item_id"`
 	Status                string `json:"status" db:"t_status"`
-	SStatus               string `json:"status" db:"s_status"`
 	TransactionEvidenceId int64  `json:"transactionEvidenceId" db:"s_transaction_evidence_id"`
 	ReserveID             string `json:"reserve_id" db:"s_reserve_id"`
 }
@@ -1104,7 +1103,6 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		transaction_evidences.item_id as t_item_id,
 		shippings.transaction_evidence_id as s_transaction_evidence_id,
 		shippings.reserve_id as s_reserve_id
-		shippings.status as s_status
 		from transaction_evidences LEFT JOIN shippings
 		ON transaction_evidences.id = shippings.transaction_evidence_id
 		where transaction_evidences.item_id IN (?);`, itemIdList)
