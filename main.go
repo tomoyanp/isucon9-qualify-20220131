@@ -1091,43 +1091,46 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		itemIdList = append(itemIdList, int(item.ItemID))
 	}
 
-	usersSql, usersArgs, err := sqlx.In("SELECT * FROM users where id IN (?)", buyerIdList)
-	if err != nil {
-		log.Print(err)
-	}
-	txSql, txArgs, err := sqlx.In(`select
-		transaction_evidences.id as t_id,
-		transaction_evidences.status as t_status,
-		transaction_evidences.item_id as t_item_id,
-		shippings.transaction_evidence_id as s_transaction_evidence_id,
-		shippings.reserve_id as s_reserve_id
-		from transaction_evidences LEFT JOIN shippings
-		ON transaction_evidences.id = shippings.transaction_evidence_id
-		where transaction_evidences.item_id IN (?);`, itemIdList)
+	users := []User{}
+	if len(buyerIdList) > 0 {
+		usersSql, usersArgs, err := sqlx.In("SELECT * FROM users where id IN (?)", buyerIdList)
+		if err != nil {
+			log.Print(err)
+		}
+		err = tx.Select(&users, usersSql, usersArgs...)
 
-	if err != nil {
-		log.Print(err)
+		if err != nil {
+			log.Print(err)
+		}
 	}
 
 	transactionEvidences := []TransactionEvidenceAndShipping{}
-	users := []User{}
+	if len(itemIdList) > 0 {
+		txSql, txArgs, err := sqlx.In(`select
+			transaction_evidences.id as t_id,
+			transaction_evidences.status as t_status,
+			transaction_evidences.item_id as t_item_id,
+			shippings.transaction_evidence_id as s_transaction_evidence_id,
+			shippings.reserve_id as s_reserve_id
+			from transaction_evidences LEFT JOIN shippings
+			ON transaction_evidences.id = shippings.transaction_evidence_id
+			where transaction_evidences.item_id IN (?);`, itemIdList)
 
-	err = tx.Select(&users, usersSql, usersArgs...)
+		if err != nil {
+			log.Print(err)
+		}
 
-	if err != nil {
-		log.Print(err)
+		err = tx.Select(&transactionEvidences, txSql, txArgs...)
+
+		if err != nil {
+			log.Print(err)
+		}
 	}
 
 	usersMap := map[int64]User{}
 
 	for _, u := range users {
 		usersMap[u.ID] = u
-	}
-
-	err = tx.Select(&transactionEvidences, txSql, txArgs...)
-
-	if err != nil {
-		log.Print(err)
 	}
 
 	txEvidenceMap := map[int64]TransactionEvidenceAndShipping{}
