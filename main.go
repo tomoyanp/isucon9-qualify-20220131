@@ -16,6 +16,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	goji "goji.io"
@@ -63,6 +64,7 @@ var (
 	templates *template.Template
 	dbx       *sqlx.DB
 	store     sessions.Store
+	redisConn *redis.Conn
 )
 
 type Config struct {
@@ -307,12 +309,39 @@ func init() {
 	))
 }
 
-func main() {
-	// host := os.Getenv("MYSQL_HOST")
+func redisPoolCreate() {
 	host := "172.31.21.159"
-	// if host == "" {
-	// 	host = "127.0.0.1"
-	// }
+	dbNo := 1
+	opt := redis.DialDatabase(dbNo)
+
+	pool = &redis.Pool{
+		MaxIdle:     5,
+		IdleTimeout: 240 * time.Second,
+
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial("tcp", host, opt)
+
+			if err != nil {
+				return nil, err
+			}
+
+			return c, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+	}
+}
+
+var (
+	pool *redis.Pool
+)
+
+func main() {
+	redisPoolCreate()
+
+	host := "172.31.21.159"
 	port := os.Getenv("MYSQL_PORT")
 	if port == "" {
 		port = "3306"
@@ -439,14 +468,17 @@ func getUserSimpleByID(q sqlx.Queryer, userID int64) (userSimple UserSimple, err
 	return userSimple, err
 }
 
-var categoryMap = map[int]Category{}
-
 func createCategoryMap() {
 	categories := []Category{}
 	dbx.Select(&categories, "SELECT * FROM categories")
+
+	con := pool.Get()
+	defer con.Close()
+
 	for _, category := range categories {
-		category, _ = recursiveCategory(dbx, category.ID)
-		categoryMap[category.ID] = category
+		ct, _ := recursiveCategory(dbx, category.ID)
+		serialized, _ := json.Marshal(ct)
+		con.Do("SET", category.ID, serialized)
 	}
 }
 
@@ -463,14 +495,20 @@ func recursiveCategory(q sqlx.Queryer, id int) (category Category, err error) {
 	return category, err
 }
 
-func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
-	if len(categoryMap) == 0 {
-		log.Print("categoryMap!!!!")
-		createCategoryMap()
+func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, flag bool) {
+	con := pool.Get()
+	defer con.Close()
+
+	data, _ := redis.Bytes(con.Do("GET", categoryID))
+	deserialized := Category{}
+	flag = false
+
+	if data != nil {
+		json.Unmarshal(data, &deserialized)
+		flag = true
 	}
 
-	log.Print(categoryMap[categoryID])
-	return categoryMap[categoryID], err
+	return deserialized, flag
 }
 
 var configMap = map[string]string{}
@@ -576,7 +614,6 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 
 	// TODO 複数台構成にした際考慮必要
 	createCategoryMap()
-	createConfigMap()
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	json.NewEncoder(w).Encode(res)
@@ -672,8 +709,8 @@ func getNewItems(w http.ResponseWriter, r *http.Request) {
 		// }
 
 		// TODO あとで
-		category, err := getCategoryByID(dbx, item.ItemCategoryID)
-		if err != nil {
+		category, flag := getCategoryByID(dbx, item.ItemCategoryID)
+		if !flag {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
@@ -720,8 +757,8 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rootCategory, err := getCategoryByID(dbx, rootCategoryID)
-	if err != nil || rootCategory.ParentID != 0 {
+	rootCategory, flag := getCategoryByID(dbx, rootCategoryID)
+	if !flag || rootCategory.ParentID != 0 {
 		outputErrorMsg(w, http.StatusNotFound, "category not found")
 		return
 	}
@@ -808,8 +845,8 @@ func getNewCategoryItems(w http.ResponseWriter, r *http.Request) {
 		// 	outputErrorMsg(w, http.StatusNotFound, "seller not found")
 		// 	return
 		// }
-		category, err := getCategoryByID(dbx, item.ItemCategoryID)
-		if err != nil {
+		category, flag := getCategoryByID(dbx, item.ItemCategoryID)
+		if !flag {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
@@ -925,8 +962,8 @@ func getUserItems(w http.ResponseWriter, r *http.Request) {
 	// TODON+1
 	itemSimples := []ItemSimple{}
 	for _, item := range items {
-		category, err := getCategoryByID(dbx, item.CategoryID)
-		if err != nil {
+		category, flag := getCategoryByID(dbx, item.CategoryID)
+		if !flag {
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			return
 		}
@@ -1083,8 +1120,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	// TODON+1
 	for _, item := range items {
-		category, err := getCategoryByID(tx, item.ItemCategoryID)
-		if err != nil {
+		category, flag := getCategoryByID(tx, item.ItemCategoryID)
+		if !flag {
 			log.Print(err)
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			tx.Rollback()
@@ -1222,8 +1259,8 @@ func getItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	category, err := getCategoryByID(dbx, item.CategoryID)
-	if err != nil {
+	category, flag := getCategoryByID(dbx, item.CategoryID)
+	if !flag {
 		outputErrorMsg(w, http.StatusNotFound, "category not found")
 		return
 	}
@@ -1510,8 +1547,8 @@ func postBuy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	category, err := getCategoryByID(tx, targetItem.CategoryID)
-	if err != nil {
+	category, flag := getCategoryByID(tx, targetItem.CategoryID)
+	if !flag {
 		log.Print(err)
 
 		outputErrorMsg(w, http.StatusInternalServerError, "category id error")
@@ -2108,8 +2145,8 @@ func postSell(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	category, err := getCategoryByID(dbx, categoryID)
-	if err != nil || category.ParentID == 0 {
+	category, flag := getCategoryByID(dbx, categoryID)
+	if !flag || category.ParentID == 0 {
 		log.Print(categoryID, category)
 		outputErrorMsg(w, http.StatusBadRequest, "Incorrect category ID")
 		return
