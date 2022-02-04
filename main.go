@@ -463,6 +463,10 @@ func recursiveCategory(q sqlx.Queryer, id int) (category Category, err error) {
 }
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
+	if categoryMap == nil {
+		createCategoryMap()
+	}
+
 	return categoryMap[categoryID], err
 }
 
@@ -484,6 +488,9 @@ func createConfigMap() {
 
 // TODOキャッシュできそう
 func getConfigByName(name string) (string, error) {
+	if configMap == nil {
+		createConfigMap()
+	}
 	return configMap[name], nil
 	// config := Config{}
 	// err := dbx.Get(&config, "SELECT * FROM `configs` WHERE `name` = ?", name)
