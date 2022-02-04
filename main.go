@@ -421,6 +421,8 @@ func main() {
 	// TODO これ多分静的ファイル
 	mux.Handle(pat.Get("/*"), http.FileServer(http.Dir("../public")))
 	log.Fatal(http.ListenAndServe(":8000", mux))
+
+	createCategoryMap()
 }
 
 func getSession(r *http.Request) *sessions.Session {
