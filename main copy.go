@@ -154,11 +154,9 @@ type ItemDetail struct {
 }
 
 type TransactionEvidenceAndShipping struct {
-	ID                    int64  `json:"id" db:"t_id"`
-	ItemID                int64  `json:"id" db:"t_item_id"`
-	Status                string `json:"status" db:"t_status"`
-	TransactionEvidenceId int64  `json:"transactionEvidenceId" db:"s_transaction_evidence_id"`
-	ReserveID             string `json:"reserve_id" db:"s_reserve_id"`
+	ID        int64  `json:"id" db:"t_id"`
+	Status    string `json:"status" db:"t_status"`
+	ReserveID string `json:"reserve_id" db:"s_reserve_id"`
 }
 
 type TransactionEvidence struct {
@@ -308,8 +306,8 @@ func init() {
 }
 
 func main() {
-	// host := os.Getenv("MYSQL_HOST")
 	host := "172.31.21.159"
+	// host := os.Getenv("MYSQL_HOST")
 	// if host == "" {
 	// 	host = "127.0.0.1"
 	// }
@@ -464,11 +462,6 @@ func recursiveCategory(q sqlx.Queryer, id int) (category Category, err error) {
 }
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
-	if categoryMap == nil {
-		log.Print("categoryMap!!!!")
-		createCategoryMap()
-	}
-
 	return categoryMap[categoryID], err
 }
 
@@ -490,9 +483,6 @@ func createConfigMap() {
 
 // TODOキャッシュできそう
 func getConfigByName(name string) (string, error) {
-	if configMap == nil {
-		createConfigMap()
-	}
 	return configMap[name], nil
 	// config := Config{}
 	// err := dbx.Get(&config, "SELECT * FROM `configs` WHERE `name` = ?", name)
@@ -507,20 +497,19 @@ func getConfigByName(name string) (string, error) {
 }
 
 func getPaymentServiceURL() string {
-	// val, _ := getConfigByName("payment_service_url")
-	// if val == "" {
-	// 	return DefaultPaymentServiceURL
-	// }
-	return "http://172.31.25.183:5555"
+	val, _ := getConfigByName("payment_service_url")
+	if val == "" {
+		return DefaultPaymentServiceURL
+	}
+	return val
 }
 
 func getShipmentServiceURL() string {
-	// val, _ := getConfigByName("shipment_service_url")
-	// if val == "" {
-	// 	return DefaultShipmentServiceURL
-	// }
-	// return val
-	return "http://172.31.25.183:7000"
+	val, _ := getConfigByName("shipment_service_url")
+	if val == "" {
+		return DefaultShipmentServiceURL
+	}
+	return val
 }
 
 func getIndex(w http.ResponseWriter, r *http.Request) {
@@ -1036,55 +1025,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	itemDetails := []ItemDetail{}
-
-	buyerIdList := []int{}
-	itemIdList := []int{}
-
-	for _, item := range items {
-		if item.ItemBuyerID != 0 {
-			buyerIdList = append(buyerIdList, int(item.ItemBuyerID))
-		}
-		itemIdList = append(itemIdList, int(item.ItemID))
-	}
-
-	usersSql, usersArgs, err := sqlx.In("SELECT * FROM users where id IN (?)", buyerIdList)
-	if err != nil {
-		log.Print(err)
-	}
-	txSql, txArgs, err := sqlx.In(`select
-		transaction_evidences.id as t_id,
-		transaction_evidences.status as t_status,
-		transaction_evidences.item_id as t_item_id,
-		shippings.transaction_evidence_id as s_transaction_evidence_id,
-		shippings.reserve_id as s_reserve_id
-		from transaction_evidences LEFT JOIN shippings
-		ON transaction_evidences.id = shippings.transaction_evidence_id
-		where transaction_evidences.item_id IN (?);`, itemIdList)
-
-	if err != nil {
-		log.Print(err)
-	}
-
-	transactionEvidenceAndShipping := []TransactionEvidenceAndShipping{}
-	users := []User{}
-
-	err = tx.Select(&users, usersSql, usersArgs...)
-
-	if err != nil {
-		log.Print(err)
-	}
-
-	err = tx.Select(&transactionEvidenceAndShipping, txSql, txArgs...)
-
-	if err != nil {
-		log.Print(err)
-	}
-
 	// TODON+1
 	for _, item := range items {
+		// seller, err := getUserSimpleByID(tx, item.SellerID)
+		// if err != nil {
+		// 	outputErrorMsg(w, http.StatusNotFound, "seller not found")
+		// 	tx.Rollback()
+		// 	return
+		// }
 		category, err := getCategoryByID(tx, item.ItemCategoryID)
 		if err != nil {
-			log.Print(err)
 			outputErrorMsg(w, http.StatusNotFound, "category not found")
 			tx.Rollback()
 			return
@@ -1118,21 +1068,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		// TODO なんとかしたい
 		// 非同期にできそう
 		if item.ItemBuyerID != 0 {
-			// buyer, err := getUserSimpleByID(tx, item.ItemBuyerID)
-			flag := false
-			buyer := UserSimple{}
-			for _, user := range users {
-				if user.ID == item.ItemBuyerID {
-					buyer.AccountName = user.AccountName
-					buyer.ID = user.ID
-					buyer.NumSellItems = user.NumSellItems
-					flag = true
-					break
-				}
-			}
-
-			if !flag {
-				log.Print("user not matched")
+			buyer, err := getUserSimpleByID(tx, item.ItemBuyerID)
+			if err != nil {
 				outputErrorMsg(w, http.StatusNotFound, "buyer not found")
 				tx.Rollback()
 				return
@@ -1141,27 +1078,32 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			itemDetail.Buyer = &buyer
 		}
 
-		// transactionEvidence := TransactionEvidence{}
-		// err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ItemID)
-
-		txShipping := TransactionEvidenceAndShipping{}
-		flag := false
-		for _, row := range transactionEvidenceAndShipping {
-			if item.ItemID == row.ItemID {
-				txShipping = row
-				flag = true
-				break
-			}
+		transactionEvidence := TransactionEvidence{}
+		err = tx.Get(&transactionEvidence, "SELECT * FROM `transaction_evidences` WHERE `item_id` = ?", item.ItemID)
+		if err != nil && err != sql.ErrNoRows {
+			// It's able to ignore ErrNoRows
+			log.Print(err)
+			outputErrorMsg(w, http.StatusInternalServerError, "db error")
+			tx.Rollback()
+			return
 		}
 
-		if flag && txShipping.ID > 0 {
-			if txShipping.TransactionEvidenceId == 0 {
+		if transactionEvidence.ID > 0 {
+			shipping := Shipping{}
+			err = tx.Get(&shipping, "SELECT * FROM `shippings` WHERE `transaction_evidence_id` = ?", transactionEvidence.ID)
+			if err == sql.ErrNoRows {
 				outputErrorMsg(w, http.StatusNotFound, "shipping not found")
 				tx.Rollback()
 				return
 			}
+			if err != nil {
+				log.Print(err)
+				outputErrorMsg(w, http.StatusInternalServerError, "db error")
+				tx.Rollback()
+				return
+			}
 			ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
-				ReserveID: txShipping.ReserveID,
+				ReserveID: shipping.ReserveID,
 			})
 			if err != nil {
 				log.Print(err)
@@ -1170,8 +1112,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			itemDetail.TransactionEvidenceID = txShipping.ID
-			itemDetail.TransactionEvidenceStatus = txShipping.Status
+			itemDetail.TransactionEvidenceID = transactionEvidence.ID
+			itemDetail.TransactionEvidenceStatus = transactionEvidence.Status
 			itemDetail.ShippingStatus = ssr.Status
 		}
 
