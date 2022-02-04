@@ -477,8 +477,15 @@ func createCategoryMap() {
 
 	for _, category := range categories {
 		ct, _ := recursiveCategory(dbx, category.ID)
-		serialized, _ := json.Marshal(ct)
-		con.Do("SET", category.ID, serialized)
+		serialized, err := json.Marshal(ct)
+		if err != nil {
+			log.Print("errrrrrr")
+			log.Print(err)
+		}
+		err = con.Do("SET", category.ID, serialized)
+		if err != nil {
+			log.Print(err)
+		}
 	}
 }
 
