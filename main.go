@@ -469,6 +469,7 @@ func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err err
 		createCategoryMap()
 	}
 
+	log.Print(categoryMap[categoryID])
 	return categoryMap[categoryID], err
 }
 
