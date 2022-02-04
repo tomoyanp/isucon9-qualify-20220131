@@ -464,7 +464,7 @@ func recursiveCategory(q sqlx.Queryer, id int) (category Category, err error) {
 }
 
 func getCategoryByID(q sqlx.Queryer, categoryID int) (category Category, err error) {
-	if categoryMap == nil {
+	if len(categoryMap) == 0 {
 		log.Print("categoryMap!!!!")
 		createCategoryMap()
 	}
