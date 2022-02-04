@@ -1208,7 +1208,11 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			}
 
 			shipping := Shipping{}
-			tx.Select(&shipping, "select status from shippings where reserve_id = ?", txShipping.ReserveID)
+			err := tx.Select(&shipping, "select status from shippings where reserve_id = ?", txShipping.ReserveID)
+			if err != nil {
+				log.Print("error")
+				log.Print(err)
+			}
 			// ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
 			// 	ReserveID: txShipping.ReserveID,
 			// })
