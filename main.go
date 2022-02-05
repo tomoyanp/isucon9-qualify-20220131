@@ -1128,7 +1128,7 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		usersMap[u.ID] = u
 	}
 
-	err = tx.Select(&transactionEvidenceAndShipping, txSql, txArgs...)
+	err = tx.Select(&transactionEvidences, txSql, txArgs...)
 
 	if err != nil {
 		log.Print(err)
